@@ -27,6 +27,11 @@ interface OrgData {
 }
 
 async function app() {
+    // Debug log
+    if (debug) {
+        console.debug("Snyk Token: " + snykToken)
+        console.debug("Org ID: " + snykOrgId)
+    }
     let orgIdAndName: any = await fetchOrgs()
 
     // Checking if SNYK_ORG_ID ernvironment variable exist and is not undefined.  If true, data results for organziation.  If the result is false, return data for all organizations
