@@ -6,11 +6,6 @@
 trigger:
 - main
 
-variables:
-  SNYK_TOKEN: $(SNYK_ORG_ID)
-  SNYK_ORG_ID: $(SNYK_ORG_ID)
-  DEBUG: $(DEBUG)
-
 pool:
   vmImage: ubuntu-latest
 
