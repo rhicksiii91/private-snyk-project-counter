@@ -21,7 +21,7 @@ steps:
     testType: 'app'
     monitorWhen: 'always'
     failOnIssues: false
-    organization: '63d4ca68-788d-464e-b4b5-0d68987b49f3'
+    organization: $(SNYK_ORG_ID)
 
 - script: |
     npm install
