@@ -15,7 +15,15 @@ steps:
     versionSpec: '16.x'
   displayName: 'Install Node.js'
 
+- task: SnykSecurityScan@1
+  inputs:
+    serviceConnectionEndpoint: 'snyk'
+    testType: 'app'
+    monitorWhen: 'always'
+    failOnIssues: false
+    organization: $(SNYK_ORG_ID)
+
 - script: |
     npm install
     npm run start:dev
-  displayName: 'npm install and build'
+  displayName: 'npm install and run'
