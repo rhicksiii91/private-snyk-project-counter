@@ -44,7 +44,7 @@ async function app() {
                 let issueCount: number | undefined = await fetchIssueCount(orgData.id, orgData.name);
 
                 console.log("Snyk Organziation " + orgData.name + " has " + JSON.stringify(projectCount) + " projects, " + JSON.stringify(targetCount) + " targets and " + JSON.stringify(issueCount) + " issues.")
-                break;
+                process.exit(1);
             }
             
         }
@@ -57,6 +57,7 @@ async function app() {
             let issueCount: number | undefined = await fetchIssueCount(orgData.id, orgData.name);
 
             console.log("Snyk Organziation " + orgData.name + " has " + JSON.stringify(projectCount) + " projects, " + JSON.stringify(targetCount) + " targets and " + JSON.stringify(issueCount) + " issues.")
+            process.exit(1);
         }
     }
     
