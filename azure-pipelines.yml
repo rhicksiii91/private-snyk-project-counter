@@ -22,8 +22,9 @@ steps:
     monitorWhen: 'always'
     failOnIssues: false
     organization: $(SNYK_ORG_ID)
+    additionalArguments: --json-file-output=./snyk_output.json
 
 - script: |
     npm install
-    npm run start
+    npm run start:dev
   displayName: 'npm install and run'
