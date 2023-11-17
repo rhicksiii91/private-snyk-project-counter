@@ -27,7 +27,7 @@ interface OrgData {
 }
 
 async function app() {
-    // Debug log
+        // Debug log
     if (debug) {
         console.debug("Snyk Token: " + snykToken)
         console.debug("Org ID: " + snykOrgId)
