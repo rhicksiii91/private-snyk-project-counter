@@ -19,7 +19,7 @@ steps:
   inputs:
     serviceConnectionEndpoint: 'snyk'
     testType: 'app'
-    monitorWhen: 'always'
+    monitorWhen: 'never'
     failOnIssues: false
     organization: $(SNYK_ORG_ID)
     additionalArguments: --json-file-output=./snyk_output.json
