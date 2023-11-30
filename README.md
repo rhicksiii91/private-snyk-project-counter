@@ -20,7 +20,7 @@ Node 16
 export SNYK_TOKEN=$SNYKTOKEN
 export SNYK_PROJECT_TAG_KEY=Branch
 
-git clone https://github.com/rhicksiii91/snyk-project-counter.git
+git clone https://github.com/rhicksiii91/private-snyk-project-counter.git
 npm install
 npm run start:dev
 
