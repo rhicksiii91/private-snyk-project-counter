@@ -39,7 +39,7 @@ async function app() {
     }
 
 
-    // Checking if SNYK_ORG_ID ernvironment variable exist and is not undefined.  If true, data results for organziation.  If the result is false, return data for all organizations
+    // Checking if SNYK_ORG_ID ernvironment variable exist and is not undefined.  If true, data results for that organziation.  If the result is false, return data for all organziations.
     if (snykOrgId !== undefined && snykOrgId.length >= 1) {
         // Looping through org IDs and returning project count
         for (const orgData of orgIdAndName) {
@@ -70,16 +70,16 @@ async function createTagsForProjects(orgId: string, projectData: any, userId: an
 
     for (const x in projectData) {
         for (const keyProjects in projectData[x]) {
-            if (debug){console.log("Print target reference : " + JSON.stringify(projectData[x][keyProjects].attributes['target_reference'], null, 2))}
+            if (debug) { console.log("Print target reference : " + JSON.stringify(projectData[x][keyProjects].attributes['target_reference'], null, 2)) }
 
             // Checking to see if Branch name is present in target_reference
             if (projectData[x][keyProjects].attributes['target_reference']) {
                 // Debug logging
-                if (debug){console.log("Found branch name, checking for branch tag")}
+                if (debug) { console.log("Found branch name, checking for branch tag") }
                 foundBranch = true
             }
             else {
-                if (debug){console.log("Project: " + projectData[x][keyProjects].attributes['name'] + " does not have branch data.  This is probably a CLI project and will not be tagged.  Project ID is the following: " + projectData[x][keyProjects]['id'])}
+                if (debug) { console.log("Project: " + projectData[x][keyProjects].attributes['name'] + " does not have branch data.  This is probably a CLI project and will not be tagged.  Project ID is the following: " + projectData[x][keyProjects]['id']) }
                 setTag = false
             }
 
@@ -87,8 +87,8 @@ async function createTagsForProjects(orgId: string, projectData: any, userId: an
             if (projectData[x][keyProjects].attributes['tags'].length >= 1 && foundBranch) {
                 for (const keyTags in projectData[x][keyProjects].attributes['tags']) {
 
-                    if(debug){
-                    console.log("Printing Tag key and value: " + JSON.stringify(projectData[x][keyProjects].attributes['tags'][keyTags], null, 2));
+                    if (debug) {
+                        console.log("Printing Tag key and value: " + JSON.stringify(projectData[x][keyProjects].attributes['tags'][keyTags], null, 2));
                     }
 
                     if (projectData[x][keyProjects].attributes['tags'][keyTags].key === projectTagKey && projectData[x][keyProjects].attributes['tags'][keyTags].value === projectData[x][keyProjects].attributes['target_reference']) {
@@ -324,4 +324,3 @@ async function fetchOrgs() {
 
 // Running app
 app()
-
