@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 
 const snykToken: any = process.env.SNYK_TOKEN;
 const snykOrgId: any = process.env.SNYK_ORG_ID;
+const projectTagKey: any = process.env.SNYK_PROJECT_TAG_KEY;
 const debug: any = process.env.DEBUG;
 const restApiVersion: string = '2023-09-14'
 const restBetaApiVersion: string = '2023-09-14~beta'
@@ -27,40 +28,177 @@ interface OrgData {
 }
 
 async function app() {
-        // Debug log
+    let orgIdAndName: any = await fetchOrgs()
+    let userId: string | undefined = await fetchUserId()
+
+    // Debug log
     if (debug) {
         console.debug("Snyk Token: " + snykToken)
         console.debug("Org ID: " + snykOrgId)
+        console.log("UserID " + userId)
     }
-    let orgIdAndName: any = await fetchOrgs()
+
 
     // Checking if SNYK_ORG_ID ernvironment variable exist and is not undefined.  If true, data results for organziation.  If the result is false, return data for all organizations
-    if (snykOrgId !== undefined && snykOrgId.length >= 1){
+    if (snykOrgId !== undefined && snykOrgId.length >= 1) {
         // Looping through org IDs and returning project count
         for (const orgData of orgIdAndName) {
-            if (snykOrgId === orgData.id){
-                let projectCount: number | undefined = await fetchProjectsCount(orgData.id, orgData.name);
-                let targetCount: number | undefined = await fetchTargetCount(orgData.id, orgData.name);
-                let issueCount: number | undefined = await fetchIssueCount(orgData.id, orgData.name);
-
-                console.log("Snyk Organziation " + orgData.name + " has " + JSON.stringify(projectCount) + " projects, " + JSON.stringify(targetCount) + " targets and " + JSON.stringify(issueCount) + " issues.")
+            if (snykOrgId === orgData.id) {
+                let projectData: Object | undefined = await fetchProjects(orgData.id, orgData.name);
+                console.log(JSON.stringify(projectData, null, 2))
+                let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
                 process.exit(0);
             }
-            
+
         }
     }
     else {
         // Looping through org IDs and returning project count
         for (const orgData of orgIdAndName) {
-            let projectCount: number | undefined = await fetchProjectsCount(orgData.id, orgData.name);
-            let targetCount: number | undefined = await fetchTargetCount(orgData.id, orgData.name);
-            let issueCount: number | undefined = await fetchIssueCount(orgData.id, orgData.name);
+            let projectData: Object | undefined = await fetchProjects(orgData.id, orgData.name);
+            console.log(JSON.stringify(projectData, null, 2))
+            let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
 
-            console.log("Snyk Organziation " + orgData.name + " has " + JSON.stringify(projectCount) + " projects, " + JSON.stringify(targetCount) + " targets and " + JSON.stringify(issueCount) + " issues.")
             process.exit(0);
         }
     }
-    
+
+}
+
+async function createTagsForProjects(orgId: string, projectData: any, userId: any) {
+    let foundBranch: boolean = false;
+    let setTag: boolean = true;
+
+    for (const x in projectData) {
+        for (const keyProjects in projectData[x]) {
+            if (debug){console.log("Print target reference : " + JSON.stringify(projectData[x][keyProjects].attributes['target_reference'], null, 2))}
+
+            // Checking to see if Branch name is present in target_reference
+            if (projectData[x][keyProjects].attributes['target_reference']) {
+                // Debug logging
+                if (debug){console.log("Found branch name, checking for branch tag")}
+                foundBranch = true
+            }
+            else {
+                if (debug){console.log("Project: " + projectData[x][keyProjects].attributes['name'] + " does not have branch data.  This is probably a CLI project and will not be tagged.  Project ID is the following: " + projectData[x][keyProjects]['id'])}
+                setTag = false
+            }
+
+            // Looping through tags to check if Branch tag already exist.
+            if (projectData[x][keyProjects].attributes['tags'].length >= 1 && foundBranch) {
+                for (const keyTags in projectData[x][keyProjects].attributes['tags']) {
+
+                    if(debug){
+                    console.log("Printing Tag key and value: " + JSON.stringify(projectData[x][keyProjects].attributes['tags'][keyTags], null, 2));
+                    }
+
+                    if (projectData[x][keyProjects].attributes['tags'][keyTags].key === projectTagKey && projectData[x][keyProjects].attributes['tags'][keyTags].value === projectData[x][keyProjects].attributes['target_reference']) {
+                        setTag = false
+                        break;
+                    }
+
+                }
+            }
+            // Create tag on project
+            if (setTag) {
+                let tagResponse: any = await setSnykTag(orgId, projectData[x][keyProjects]['id'], userId, projectData[x][keyProjects].attributes['target_reference'])
+                console.log(tagResponse)
+            }
+            else {
+                setTag = true
+            }
+
+        }
+    }
+    return 0;
+}
+
+async function setSnykTag(orgId: string, projectId: string, userId: string, keyValue: string) {
+    let url: string = `https://api.snyk.io/rest/orgs/${orgId}/projects/${projectId}?version=${restExperimentalApiVersion}`
+
+    try {
+        // Calling Snyk Rest Targets endpoint
+        const response: any = await fetch(url, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                "data": {
+                    "attributes": {
+                        "tags": [
+                            {
+                                "key": `${projectTagKey}`,
+                                "value": `${keyValue}`
+                            }
+                        ]
+                    },
+                    "id": `${projectId}`,
+                    "relationships": {
+                        "owner": {
+                            "data": {
+                                "id": `${userId}`,
+                                "type": "user"
+                            }
+                        }
+                    },
+                    "type": "project"
+                }
+            }),
+            headers: {
+                'Content-Type': 'application/vnd.api+json',
+                'Authorization': `token ${snykToken}`
+            }
+        });
+
+        // Rate limit check and sleep
+        if (response.status == 429) {
+            console.log("Hit the rate limit, sleeping for one minute")
+            await new Promise(resolve => setTimeout(resolve, 60001));
+        }
+
+        if (response.status == 200) {
+            const tagResponse: any = await response.json()
+            return response.status
+        }
+
+    } catch (error) {
+        console.log('There was an error fetching data from targets endpoint', {
+            extra: {
+                errors: JSON.stringify(error),
+            },
+        });
+    }
+}
+
+async function fetchUserId() {
+    let url: string = `https://api.snyk.io/rest/self?version=${restExperimentalApiVersion}`
+
+    try {
+        // Calling Snyk Rest Targets endpoint
+        const response: any = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/vnd.api+json',
+                'Authorization': `token ${snykToken}`
+            }
+        });
+
+        // Rate limit check and sleep
+        if (response.status == 429) {
+            console.log("Hit the rate limit, sleeping for one minute")
+            await new Promise(resolve => setTimeout(resolve, 60001));
+        }
+
+        if (response.status == 200) {
+            const userData: any = await response.json()
+            return userData.data.id
+        }
+
+    } catch (error) {
+        console.log('There was an error fetching data from targets endpoint', {
+            extra: {
+                errors: JSON.stringify(error),
+            },
+        });
+    }
 }
 
 async function fetchIssueCount(orgId: string, orgName: string) {
@@ -99,8 +237,8 @@ async function fetchIssueCount(orgId: string, orgName: string) {
 
             if (response.status == 200) {
                 const issueData: any = await response.json()
-                for (const key in issueData.data){
-                    switch (issueData.data[key].attributes['effective_severity_level']){
+                for (const key in issueData.data) {
+                    switch (issueData.data[key].attributes['effective_severity_level']) {
                         case 'low':
                             lowSeverityCount = lowSeverityCount + 1;
                             break;
@@ -150,7 +288,7 @@ async function fetchTargetCount(orgId: string, orgName: string) {
     let url: string = `https://api.snyk.io/rest/orgs/${orgId}/targets?version=${restBetaApiVersion}&limit=100&excludeEmpty=false`
     let hasNextLink = true;
     let targetCount = 0;
-    
+
     while (hasNextLink) {
         try {
             // Calling Snyk Rest Targets endpoint
@@ -163,10 +301,10 @@ async function fetchTargetCount(orgId: string, orgName: string) {
             });
 
             // Debug log
-            if (debug){
-            console.debug("Targets api call status code: " + response.status)
-            console.debug("Org name: " + orgName)
-            }            
+            if (debug) {
+                console.debug("Targets api call status code: " + response.status)
+                console.debug("Org name: " + orgName)
+            }
 
             // Rate limit check and sleep
             if (response.status == 429) {
@@ -202,13 +340,13 @@ async function fetchTargetCount(orgId: string, orgName: string) {
 
 }
 
-async function fetchProjectsCount(orgId: string, orgName: string) {
+async function fetchProjects(orgId: string, orgName: string) {
     let url: string = `https://api.snyk.io/rest/orgs/${orgId}/projects?version=${restApiVersion}&limit=100`
     let hasNextLink = true;
-    let projectCount = 0;
-    
+    let projectDataHolder = new Array;
+
     while (hasNextLink) {
-        
+
         try {
             // Calling Snyk Rest Projects endpoint
             const response: any = await fetch(url, {
@@ -220,9 +358,9 @@ async function fetchProjectsCount(orgId: string, orgName: string) {
             });
 
             // Debug log
-            if (debug){
-            console.debug("Projects api call status code: " + response.status)
-            console.debug("Org name: " + orgName)
+            if (debug) {
+                console.debug("Projects api call status code: " + response.status)
+                console.debug("Org name: " + orgName)
             }
 
             // Rate limit check and sleep
@@ -230,12 +368,12 @@ async function fetchProjectsCount(orgId: string, orgName: string) {
                 console.log("Hit the rate limit, sleeping for one minute")
                 await new Promise(resolve => setTimeout(resolve, 60001));
             }
-            
+
 
             if (response.status == 200) {
                 const projectData: any = await response.json()
-                // Counting projects
-                projectCount = projectCount + Object.keys(projectData.data).length
+                // Collecting project data
+                projectDataHolder.push(projectData.data)
 
                 // Checking for more pages
                 if (projectData.links && projectData.links.next) {
@@ -244,7 +382,7 @@ async function fetchProjectsCount(orgId: string, orgName: string) {
                 }
                 else {
                     hasNextLink = false
-                    return projectCount;
+                    return projectDataHolder;
                 }
             }
 
@@ -280,8 +418,8 @@ async function fetchOrgs() {
                 }
             });
 
-            if(debug){
-            console.debug("Orgs api call status code: " + response.status)
+            if (debug) {
+                console.debug("Orgs api call status code: " + response.status)
             }
 
             // Rate limit check and sleep
