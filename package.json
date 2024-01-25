@@ -16,5 +16,8 @@
     "request-manager": "^1.0.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "fast-deep-equal": "^3.1.3"
   }
 }

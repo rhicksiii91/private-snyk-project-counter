@@ -1,4 +1,7 @@
+import equal from 'fast-deep-equal';
+import _ from 'lodash';
 import fetch from 'node-fetch';
+
 
 const snykToken: any = process.env.SNYK_TOKEN;
 const snykOrgId: any = process.env.SNYK_ORG_ID;
@@ -12,6 +15,11 @@ interface OrgInfo {
     id: string;
     name: string;
 
+}
+
+interface snapshotIdAndCreatedDate {
+    id: string,
+    created: string
 }
 
 interface OrgData {
@@ -44,9 +52,63 @@ async function app() {
         // Looping through org IDs and returning project count
         for (const orgData of orgIdAndName) {
             if (snykOrgId === orgData.id) {
-                let projectData: Object | undefined = await fetchProjects(orgData.id, orgData.name);
-                console.log(JSON.stringify(projectData, null, 2))
-                let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
+                let projectData: Object | undefined = await fetchContatinerProjects(orgData.id, orgData.name);
+                // console.log(JSON.stringify(projectData, null, 2))
+                let projectIds: any = returnProjectIds(projectData)
+                console.log("Here are the project ids: " + projectIds)
+
+                for (const projectId of projectIds) {
+                    console.log("Project Id: " + projectId)
+                    let projectSnapshotData = await findLastTwoSnapshotsIds(orgData.id, projectId)
+                    console.log("Snapshot main Data: " + JSON.stringify(projectSnapshotData, null, 2))
+                    console.log("ID 1: " + projectSnapshotData[0].id)
+                    console.log("ID 2: " + projectSnapshotData[1].id)
+
+                    // Pull in snapshot issues
+                    let currentIssues = await fetchAggregatetdProjectSnapshotsIssues(orgData.id, projectId, projectSnapshotData[0].id)
+                    let pastSnapshotIssues = await fetchAggregatetdProjectSnapshotsIssues(orgData.id, projectId, projectSnapshotData[1].id)
+
+                    // Check if results are different
+                    let diffbool = _.isEqual(currentIssues, pastSnapshotIssues)
+                    
+                    console.log("Here is the diffbool value: " + diffbool)
+                    console.log(currentIssues.length)
+                    console.log(pastSnapshotIssues.length)
+                    if (!diffbool) {
+                        console.log("Detected new issues, starting compare")
+
+                        let newIssues = new Array;
+
+
+                        for (let currentIssue of currentIssues) {
+                            let foundIssue: boolean = false;
+                            for (let pastIssue of pastSnapshotIssues) {
+                                // console.log("Here is current issue: " + JSON.stringify(currentIssue, null, 2))
+                                if (currentIssue.id === pastIssue.id) {
+                                    foundIssue = true
+                                    break;
+                                    // console.log("Sometihng: " + JSON.stringify(newIssues))
+                                }
+                            }
+                            if (foundIssue) {
+                                console.log("Found existing issue, skipping")
+                                foundIssue = false
+                            }
+                            else {
+                                newIssues.push(currentIssue)
+                                console.log("Here is the new issue: " + JSON.stringify(currentIssue, null, 2))
+                            }
+                        }
+
+                        console.log("Here is the diff: " + JSON.stringify(newIssues, null, 2))
+                        // console.log("No new issues found")
+                    }
+                    else{
+                        console.log("No issues found")
+                    }
+
+                }
+                // let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
                 process.exit(0);
             }
 
@@ -55,13 +117,136 @@ async function app() {
     else {
         // Looping through org IDs and returning project count
         for (const orgData of orgIdAndName) {
-            let projectData: Object | undefined = await fetchProjects(orgData.id, orgData.name);
+            let projectData: Object | undefined = await fetchContatinerProjects(orgData.id, orgData.name);
             console.log(JSON.stringify(projectData, null, 2))
-            let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
+            // let taggingStatus: number | undefined = await createTagsForProjects(orgData.id, projectData, userId)
             process.exit(0);
         }
     }
 
+}
+
+function getDifference(o1: any, o2: any) {
+    let diff = {};
+    let tmp: any = [];
+    if (JSON.stringify(o1) === JSON.stringify(o2)) return;
+
+    for (var k in o1) {
+        if (Array.isArray(o1[k]) && Array.isArray(o2[k])) {
+            tmp = o1[k].reduce(function (p, c, i) {
+                var _t = getDifference(c, o2[k][i]);
+                if (_t)
+                    p.push(_t);
+                return p;
+            }, []);
+            if (Object.keys(tmp).length > 0)
+                diff[k] = tmp;
+        } else if (typeof (o1[k]) === "object" && typeof (o2[k]) === "object") {
+            tmp = getDifference(o1[k], o2[k]);
+            let diff = Object.keys(tmp)[0]
+            if (tmp && diff.length > 0)
+                diff[k] = tmp;
+        } else if (o1[k] !== o2[k]) {
+            diff[k] = o2[k]
+        }
+    }
+    return diff;
+}
+
+async function fetchAggregatetdProjectSnapshotsIssues(orgId: string, projectId: string, snapshotId: string) {
+    let url: string = `https://snyk.io/api/v1/org/${orgId}/project/${projectId}/history/${snapshotId}/aggregated-issues`
+
+    try {
+        // Calling Snyk Rest Targets endpoint
+        const response: any = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Authorization': `token ${snykToken}`
+            }
+        });
+
+        // Rate limit check and sleep
+        if (response.status == 429) {
+            console.log("Hit the rate limit, sleeping for one minute")
+            await new Promise(resolve => setTimeout(resolve, 60001));
+        }
+
+        if (response.status == 200) {
+            const snapshotResponse: any = await response.json()
+            return snapshotResponse.issues
+        }
+
+    } catch (error) {
+        console.log('There was an error fetching data from targets endpoint', {
+            extra: {
+                errors: JSON.stringify(error),
+            },
+        });
+    }
+}
+
+async function findLastTwoSnapshotsIds(orgId: string, projectId: string) {
+    let snapshotIdAndCreatedDate: snapshotIdAndCreatedDate[] = [];
+    let projectSnapshotData = await fetchProjectSnapshots(orgId, projectId);
+    for (const snapshot of projectSnapshotData) {
+        let idAndTimePlaceholder: any = {
+            id: snapshot.id,
+            created: snapshot.created
+        }
+        snapshotIdAndCreatedDate.push(idAndTimePlaceholder)
+        if (snapshotIdAndCreatedDate.length === 2) {
+            break;
+        }
+    }
+
+    return snapshotIdAndCreatedDate;
+}
+
+async function fetchProjectSnapshots(orgId: string, projectId: string) {
+    let url: string = `https://snyk.io/api/v1/org/${orgId}/project/${projectId}/history?perPage=100&page=1`
+
+    try {
+        // Calling Snyk Rest Targets endpoint
+        const response: any = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Authorization': `token ${snykToken}`
+            }
+        });
+
+        // Rate limit check and sleep
+        if (response.status == 429) {
+            console.log("Hit the rate limit, sleeping for one minute")
+            await new Promise(resolve => setTimeout(resolve, 60001));
+        }
+
+        if (response.status == 200) {
+            const snapshotResponse: any = await response.json()
+            return snapshotResponse.snapshots
+        }
+
+    } catch (error) {
+        console.log('There was an error fetching data from targets endpoint', {
+            extra: {
+                errors: JSON.stringify(error),
+            },
+        });
+    }
+}
+
+function returnProjectIds(projectData: any) {
+    let projectIds: string[] = [];
+
+    for (const x in projectData) {
+        for (const keyProjects in projectData[x]) {
+            projectIds.push(projectData[x][keyProjects].id)
+            // console.log("See project data here")
+            // console.log(JSON.stringify(projectData[x][keyProjects].id, null, 2))
+        }
+    }
+    return projectIds;
 }
 
 async function createTagsForProjects(orgId: string, projectData: any, userId: any) {
@@ -200,8 +385,8 @@ async function fetchUserId() {
     }
 }
 
-async function fetchProjects(orgId: string, orgName: string) {
-    let url: string = `https://api.snyk.io/rest/orgs/${orgId}/projects?version=${restApiVersion}&limit=100`
+async function fetchContatinerProjects(orgId: string, orgName: string) {
+    let url: string = `https://api.snyk.io/rest/orgs/${orgId}/projects?version=${restApiVersion}&limit=100&types=deb%2Cdockerfile%2Crpm%2Clinux%2Capk`
     let hasNextLink = true;
     let projectDataHolder = new Array;
 
