@@ -13,11 +13,7 @@
   "devDependencies": {
     "node-fetch": "^2.7.0",
     "nodemon": "^3.0.3",
-    "request-manager": "^1.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "fast-deep-equal": "^3.1.3"
   }
 }
