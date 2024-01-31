@@ -1,7 +1,7 @@
 # Snyk-project-counter
 
 ## Features
-Returns project and target count for all organizations that the SNYK_TOKEN has access to.  You can specify a Snyk organization id to return project and target data.
+Returns organizations that are within 10% of 25000 project limit or over 25000 projects.
 
 ## Environment variables
 ```
